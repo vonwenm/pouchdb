@@ -102,21 +102,6 @@ adapters.forEach(function (adapter) {
       });
     });
 
-    it('Get local_seq of document', function (done) {
-      var db = new PouchDB(dbs.name);
-      db.post({ test: 'somestuff' }, function (err, info1) {
-        db.get(info1.id, { local_seq: true }, function (err, res) {
-          res._local_seq.should.equal(1);
-          db.post({ test: 'someotherstuff' }, function (err, info2) {
-            db.get(info2.id, { local_seq: true }, function (err, res) {
-              res._local_seq.should.equal(2);
-              done();
-            });
-          });
-        });
-      });
-    });
-
     it('Get revisions of removed doc', function (done) {
       var db = new PouchDB(dbs.name, {auto_compaction: false});
       db.post({ test: 'somestuff' }, function (err, info) {
@@ -326,6 +311,13 @@ adapters.forEach(function (adapter) {
     });
 
     it('Test get with revs_info on compacted tree', function (done) {
+      // _compact endpoint is not exposed in CouchDB 2.0
+      // (it's exposed via a private port). Skip
+      // this test for now
+      if (testUtils.isCouchMaster()) {
+        return done();
+      }
+
       var db = new PouchDB(dbs.name);
       var simpleTree = [
         [
@@ -709,8 +701,16 @@ adapters.forEach(function (adapter) {
         res.length.should.equal(1, 'just one result');
         res[0].missing.should.equal('2-whatever', 'just one result');
         db.get('nonexistent', { open_revs: 'all' }, function (err, res) {
-          res.length.should.equal(0, 'no open revisions');
-          done();
+          // CouchDB 1.X doesn't handle this situation correctly
+          // CouchDB 2.0 fixes it (see COUCHDB-2517)
+          testUtils.isCouchDB(function (isCouchDB) {
+            if (isCouchDB && !testUtils.isCouchMaster()) {
+              return done();
+            }
+
+            err.status.should.equal(404);
+            done();
+          });
         });
       });
     });
@@ -724,7 +724,9 @@ adapters.forEach(function (adapter) {
             'not an array': 'or all string'
           }
         }, function (err, res) {
-          err.name.should.equal('unknown_error', 'correct error');
+          var acceptable_errors = ['unknown_error','function_clause'];
+          acceptable_errors.indexOf(err.name)
+            .should.not.equal(-1, 'correct error');
           // unfortunately!
           db.get('foo', {
             open_revs: [

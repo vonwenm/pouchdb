@@ -16,6 +16,7 @@
     "pouchdb"
   ],
   "dependencies": {
+    "pouchdb-upsert": "^1.0.2",
     "argsarray": "0.0.1",
     "bluebird": "^1.2.4",
     "double-ended-queue": "^2.0.0-0",
@@ -34,7 +35,6 @@
     "through2": "^0.4.1",
     "vuvuzela": "^1.0.0",
     "debug": "^2.1.0",
-    "pouchdb-express-router": "^0.0.2",
     "express": "^4.10.4",
     "miller-rabin": "1.1.1",
     "pouchdb-collate": "^1.2.0"
@@ -43,6 +43,7 @@
     "leveldown": "~0.10.2"
   },
   "devDependencies": {
+    "pouchdb-express-router": "^0.0.2",
     "bundle-collapser": "^1.1.1",
     "rimraf": "2.2.8",
     "pouchdb-server": "^0.6.1",
@@ -74,7 +75,7 @@
     "browserify": "^6.1.0",
     "watchify": "^2.0.0",
     "derequire": "^1.2.0",
-    "selenium-standalone": "^2.44.0-4"
+    "selenium-standalone": "3.0.2"
   },
   "scripts": {
     "build-js": "npm run build-main-js && npm run min && npm run build-plugins",

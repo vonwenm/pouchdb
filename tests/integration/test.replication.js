@@ -137,8 +137,10 @@ adapters.forEach(function (adapters) {
             result.ok.should.equal(true);
             result.docs_written.should.equal(docs.length);
             new PouchDB(dbs.name).info(function (err, info) {
-              info.update_seq.should.equal(numDocs, 'update_seq');
-              info.doc_count.should.equal(numDocs, 'doc_count');
+              verifyInfo(info, {
+                update_seq: numDocs,
+                doc_count: numDocs
+              });
               done();
             });
           }
@@ -1980,7 +1982,7 @@ adapters.forEach(function (adapters) {
       db1.post(adoc, function () {
         PouchDB.replicate(db1, db2, {
           complete: function () {
-            PouchDB.destroy(db1name, function () {
+            db1.destroy(function () {
               var fresh = new PouchDB(db1name);
               fresh.post(newdoc, function () {
                 PouchDB.replicate(fresh, db2, {
@@ -2540,14 +2542,16 @@ adapters.forEach(function (adapters) {
           });
         };
 
-        db.replicate.to(remote, { batch_size: 1 }, function (err, result) {
+        db.replicate.to(remote, {batch_size: 1, retry: false},
+                        function (err, result) {
           should.not.exist(result);
           should.exist(err);
           err.result.docs_read.should.equal(2, 'docs_read');
           err.result.docs_written.should.equal(1, 'docs_written');
           err.result.doc_write_failures.should.equal(1, 'doc_write_failures');
           remote.bulkDocs = bulkDocs;
-          db.replicate.to(remote, { batch_size: 1 }, function (err, result) {
+          db.replicate.to(remote, {batch_size: 1, retry: false},
+                          function (err, result) {
             // checkpoint should not be moved past first doc
             // should continue from this point and retry second doc
             result.docs_read.should.equal(1, 'second replication, docs_read');
@@ -2581,7 +2585,8 @@ adapters.forEach(function (adapters) {
           callback(new Error());
         };
 
-        db.replicate.to(remote, { batch_size: 1 }, function (err, result) {
+        db.replicate.to(remote, {batch_size: 1, retry: false},
+                        function (err, result) {
           should.not.exist(result);
           should.exist(err);
           err.result.docs_read.should.equal(1, 'docs_read');
@@ -2589,7 +2594,8 @@ adapters.forEach(function (adapters) {
           err.result.doc_write_failures.should.equal(1, 'doc_write_failures');
           err.result.last_seq.should.equal(0, 'last_seq');
           remote.bulkDocs = bulkDocs;
-          db.replicate.to(remote, { batch_size: 1 }, function (err, result) {
+          db.replicate.to(remote, {batch_size: 1, retry: false},
+                          function (err, result) {
             result.doc_write_failures.should
               .equal(0, 'second replication, doc_write_failures');
             result.docs_written.should
@@ -2741,13 +2747,6 @@ adapters.forEach(function (adapters) {
         });
       }
 
-      // a basic map function to mimic our testing situation
-      var map = 'function(doc) {' +
-        'if (doc.common === true) {' +
-          'emit(doc._id, doc.rev);' +
-        '}' +
-      '}';
-
       // The number of workflow cycles to perform. 2+ was always failing
       // reason for this test.
       var workflow = function (name, remote, x) {
@@ -2780,26 +2779,41 @@ adapters.forEach(function (adapters) {
             integer: 3,
             thisVaries: new Date(),
             common: true
+          },
+          {
+            "_id": "_design/common",
+            views: {
+              common: {
+                map: function (doc) {
+                  if (doc.common) {
+                    emit(doc._id, doc._rev);
+                  }
+                }.toString()
+              }
+            }
           }
         ];
         var dbr = new PouchDB(remote);
         rebuildDocuments(dbr, docs, function () {
           var db = new PouchDB(name);
           db.replicate.from(remote, function (err, result) {
-            db.query({ map: map }, { reduce: false }, function (err, result) {
-              result.rows.length.should.equal(docs.length);
-              if (--x) {
-                workflow(name, remote, x);
-              } else {
-                db.info(function (err, info) {
-                  verifyInfo(info, {
-                    update_seq: 4,
-                    doc_count: 4
+            db.query('common/common', { reduce: false },
+              function (err, result) {
+                // -1 for the design doc
+                result.rows.length.should.equal(docs.length - 1);
+                if (--x) {
+                  workflow(name, remote, x);
+                } else {
+                  db.info(function (err, info) {
+                    verifyInfo(info, {
+                      update_seq: 5,
+                      doc_count: 5
+                    });
+                    done();
                   });
-                  done();
-                });
+                }
               }
-            });
+            );
           });
         });
       };
@@ -2831,11 +2845,12 @@ adapters.forEach(function (adapters) {
 
     it('issue #585 Store checkpoint on target db.', function (done) {
       var db = new PouchDB(dbs.name);
+      var remote = new PouchDB(dbs.remote);
       var docs = [{ _id: 'a' }, { _id: 'b' }];
       db.bulkDocs({ docs: docs }, {}, function (err, _) {
         db.replicate.to(dbs.remote, function (err, result) {
           result.docs_written.should.equal(docs.length);
-          PouchDB.destroy(dbs.remote, function (err, result) {
+          remote.destroy(function (err, result) {
             db.replicate.to(dbs.remote, function (err, result) {
               result.docs_written.should.equal(docs.length);
               db.info(function (err, info) {
@@ -2909,7 +2924,11 @@ adapters.forEach(function (adapters) {
                 live: true,
                 onChange: function (change) {
                   change.changes.should.have.length(1);
-                  change.seq.should.equal(info.update_seq);
+
+                  // not a valid assertion in CouchDB 2.0
+                  if (!testUtils.isCouchMaster()) {
+                    change.seq.should.equal(info.update_seq);
+                  }
                   done();
                 }
               });
@@ -3039,7 +3058,7 @@ adapters.forEach(function (adapters) {
 
       rep.on('complete', function() {
         active.should.equal(2);
-        paused.should.equal(2);
+        paused.should.be.at.least(2);
         done();
       });
 
@@ -3461,6 +3480,30 @@ adapters.forEach(function (adapters) {
           done();
         }).catch(done);
       });
+    });
+
+    it('#3270 triggers "change" events with .docs property', function(done) {
+      var replicatedDocs = [];
+      var db = new PouchDB(dbs.name);
+      db.bulkDocs({ docs: docs }, {})
+      .then(function(results) {
+        var replication = db.replicate.to(dbs.remote);
+        replication.on('change', function(change) {
+          replicatedDocs = replicatedDocs.concat(change.docs);
+        });
+        return replication;
+      })
+      .then(function() {
+        replicatedDocs.sort(function (a, b) {
+          return a._id > b._id ? 1 : -1;
+        });
+        replicatedDocs.length.should.equal(3);
+        replicatedDocs[0]._id.should.equal('0');
+        replicatedDocs[1]._id.should.equal('1');
+        replicatedDocs[2]._id.should.equal('2');
+        done();
+      })
+      .catch(done);
     });
   });
 });

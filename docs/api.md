@@ -192,7 +192,7 @@ All options default to `false` unless otherwise specified.
 * `options.open_revs`: Fetch all leaf revisions if `open_revs="all"` or fetch all leaf revisions specified in `open_revs` array. Leaves will be returned in the same order as specified in input array.
 * `options.conflicts`: If specified, conflicting leaf revisions will be attached in `_conflicts` array.
 * `options.attachments`: Include attachment data.
-* `options.local_seq`: Include sequence number of the revision in the database.
+* `options.local_seq` (*DEPRECATED*): Include sequence number of the revision in the database, this will be removed in the next major version.
 * `options.ajax`: An object of options to be sent to the ajax requester. In Node they are sent verbatim to [request][] with the exception of:
     * `options.ajax.cache`: Appends a random string to the end of all HTTP GET requests to avoid them being cached on IE. Set this to `true` to prevent this happening.
 
@@ -485,7 +485,7 @@ db.changes()
 
 **Note:**
 
-* The `'complete'` event only fires when you aren't doing live changes. With live changes, use the `'uptodate'` event instead.
+* The `'complete'` event only fires when you aren't doing live changes. With live changes, use the `'paused'` event instead.
 * The `changes()` method was not an event emitter before PouchDB 2.2.0, and instead of the `'change'` and `'complete'` events it took `complete` and `onChange` function options. This is deprecated and could be removed in PouchDB version 3.
 * The `'since'`option formerly took 'latest' but has been changed to 'now' to keep consistency with CouchDB. 'latest' is deprecated but will still work to ensure backwards compatibility.
 
@@ -504,6 +504,7 @@ Replication is an event emiter like `changes()` and emits the `'complete'`, `'ac
 All options default to `false` unless otherwise specified.
 
 * `options.live`: If `true`, starts subscribing to future changes in the `source` database and continue replicating them.
+* `options.retry`: If `true` will attempt to retry replications in the case of failure (due to being offline). Only applicable if `options.live` is also `true`.
 * `options.filter`: Reference a filter function from a design document to selectively get updates.
 * `options.query_params`: Query params sent to the filter function.
 * `options.doc_ids`: Only replicate docs with these ids (array of strings).
@@ -616,8 +617,6 @@ var sync = PouchDB.sync('mydb', 'http://localhost:5984/mydb', {live: true})
     // handle change
   }).on('complete', function (info) {
     // handle complete
-  }).on('uptodate', function (info) {
-    // handle up-to-date
   }).on('error', function (err) {
     // handle error
   });
